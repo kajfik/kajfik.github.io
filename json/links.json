@@ -1,0 +1,20 @@
+[
+    {
+        "name": "Facebook",
+        "color": "red",
+        "icon": "facebook",
+        "url": "https://www.facebook.com/kajfosz"
+	},
+    {
+        "name": "Twitter",
+        "color": "red",
+        "icon": "twitter",
+        "url": "https://twitter.com/kajfosz_jakub"
+	},
+    {
+        "name": "Github",
+        "color": "red",
+        "icon": "github",
+        "url": "https://github.com/kajfik000"
+	}
+]
