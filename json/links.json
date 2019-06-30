@@ -1,11 +1,5 @@
 [
     {
-        "name": "Facebook",
-        "color": "#3B5998",
-        "icon": "facebook",
-        "url": "https://www.facebook.com/kajfosz"
-	},
-    {
         "name": "Twitter",
         "color": "#38A1F3",
         "icon": "twitter",
