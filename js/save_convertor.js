@@ -1,10 +1,10 @@
 var mobile_save_textarea = document.getElementById("mobile_save");
 var json_textarea = document.getElementById("json");
-var pako = require('pako');
-var startingString = "AntimatterDimensionsAndroidSaveFormat";
-var endingString = "EndOfSavefile";
+const startingString = "AntimatterDimensionsAndroidSaveFormat";
+const endingString = "EndOfSavefile";
+const version = "AAA";
 
-function onMobileSaveInput() {
+function onMobileSaveInput() {    
     var mobile_save = mobile_save_textarea.value;
     
     if (mobile_save === "") {
@@ -29,8 +29,9 @@ function onJsonInput() {
     if (json === "") {
         mobile_save_textarea.value = "";
     } else {
-        const gzipped_json = pako.gzip(json);
-        mobile_save_textarea.value = _arrayBufferToBase64(gzipped_json).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+        const compressed = _arrayBufferToBase64(pako.gzip(json));
+        const improved = compressed.replace(/=+$/g, "").replace(/0/g, "0a").replace(/\+/g, "0b").replace(/\//g, "0c");
+        mobile_save_textarea.value = startingString + version + improved + endingString;
     }
 }
 
