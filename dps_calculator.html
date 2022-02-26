@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Jakub Kajfosz</title>
+    <meta name="keywords" content="Portfolio, Antimatter Dimensions, Android, App, Game, Privacy Policy">
+    <meta name="description" content="My Portfolio">
+    <meta name="author" content="Jakub Kajfosz">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link type="text/css" rel="stylesheet" href="css/index.css" media="screen,projection" />
+    <link href="css/materialdesignicons.min.css" media="all" rel="stylesheet" type="text/css" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#f5f6fa">
+    <link href="https://fonts.googleapis.com/css?family=Saira+Semi+Condensed:500,600,700" rel="stylesheet">
+    <!-- If you want Google Analytics, do some Google searching, and pop it here. -->
+    <!--Let browser know website is optimized for mobile-->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+
+<body>
+    <div style="padding-left: 2em; width:80%; padding-top: 1em">
+        <table id="example" class="display">
+            <tr>
+                <td><label for="lowerBound">Lower bound:</label></td>
+                <td><input type="text" id="lowerBound" oninput="onInput();" style="width:90px"><br></td>
+            </tr>
+            <tr>
+                <td><label for="upperBound">Upper bound:</label></td>
+                <td><input type="text" id="upperBound" oninput="onInput();" style="width:90px"><br></td>
+            </tr>
+            <tr>
+                <td><label for="attackSpeed">Attack speed:</label></td>
+                <td>
+                    <select id="attackSpeed" style="width:98px" oninput="onInput();">
+                        <option value="0.51">Super Slow</option>
+                        <option value="0.83">Very Slow</option>
+                        <option value="1.5">Slow</option>
+                        <option value="2.05">Normal</option>
+                        <option value="2.5">Fast</option>
+                        <option value="3.1">Very Fast</option>
+                        <option value="4.3">Super Fast</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td><label for="dps">Average DPS:</label></td>
+                <td><div id="dps">NaN</div></td>
+            </tr>
+        </table>
+        
+    </div>
+    
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script type="text/javascript" src="js/materialize.min.js"></script>
+    <script type="text/javascript" src="js/dps_calculator.js"></script>
+</body>
+
+</html>
