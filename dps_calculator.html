@@ -29,10 +29,16 @@
             <tr>
                 <td><label for="lowerBound">Lower bound:</label></td>
                 <td><input type="text" id="lowerBound" oninput="onInput();" style="width:90px"><br></td>
+                <td style="width:30px"></td>
+                <td><label for="lowerBound2">Lower bound:</label></td>
+                <td><input type="text" id="lowerBound2" oninput="onInput2();" style="width:90px"><br></td>
             </tr>
             <tr>
                 <td><label for="upperBound">Upper bound:</label></td>
                 <td><input type="text" id="upperBound" oninput="onInput();" style="width:90px"><br></td>
+                <td style="width:30px"></td>
+                <td><label for="upperBound2">Upper bound:</label></td>
+                <td><input type="text" id="upperBound2" oninput="onInput2();" style="width:90px"><br></td>
             </tr>
             <tr>
                 <td><label for="attackSpeed">Attack speed:</label></td>
@@ -47,10 +53,26 @@
                         <option value="4.3">Super Fast</option>
                     </select>
                 </td>
+                <td style="width:30px"></td>
+                <td><label for="attackSpeed2">Attack speed:</label></td>
+                <td>
+                    <select id="attackSpeed2" style="width:98px" oninput="onInput2();">
+                        <option value="0.51">Super Slow</option>
+                        <option value="0.83">Very Slow</option>
+                        <option value="1.5">Slow</option>
+                        <option value="2.05" selected="true">Normal</option>
+                        <option value="2.5">Fast</option>
+                        <option value="3.1">Very Fast</option>
+                        <option value="4.3">Super Fast</option>
+                    </select>
+                </td>
             </tr>
             <tr>
                 <td><label for="dps">Average DPS:</label></td>
                 <td><div id="dps">NaN</div></td>
+                <td style="width:30px"></td>
+                <td><label for="dps2">Average DPS:</label></td>
+                <td><div id="dps2">NaN</div></td>
             </tr>
         </table>
         
