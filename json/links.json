@@ -1,8 +1,14 @@
 [
     {
+        "name": "Github",
+        "color": "#000000",
+        "icon": "github",
+        "url": "https://github.com/kajfik"
+    },
+    {
         "name": "Twitter",
         "color": "#38A1F3",
         "icon": "twitter",
-        "url": "https://twitter.com/kajfosz_jakub"
+        "url": "https://twitter.com/kajfik"
     }
 ]
