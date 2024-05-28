@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Antimatter Dimensions Glyph Seed Calculator</title>
+    <meta name="keywords" content="Portfolio, Antimatter Dimensions, Android, App, Game, Privacy Policy">
+    <meta name="description" content="My Portfolio">
+    <meta name="author" content="Jakub Kajfosz">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="css/index.css" media="screen,projection">
+    <link rel="stylesheet" href="css/materialdesignicons.min.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#f5f6fa">
+    <link href="https://fonts.googleapis.com/css?family=Saira+Semi+Condensed:500,600,700" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Saira Semi Condensed', sans-serif;
+            background-color: #2c2c2c;
+            color: #f5f6fa;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            padding: 2em;
+            max-width: 800px;
+            margin: auto;
+            background-color: #333;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 1em;
+        }
+
+        .form-control {
+            width: 150px;
+            display: inline-block;
+            margin-right: 10px;
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #444;
+            color: #f5f6fa;
+        }
+
+        .form-control:disabled {
+            background-color: #555;
+            color: #f5f6fa; /* Ensure text is readable */
+            cursor: not-allowed;
+            opacity: 0.6; /* Optional: make it look more disabled */
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.5em 1em;
+            background-color: #5bbad5;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            text-align: center;
+            width: 100px; /* Ensure the button has a fixed width */
+            line-height: 1.5em; /* Adjust line-height to center text vertically */
+            transition: background-color 0.3s ease;
+        }
+
+        .btn:hover {
+            background-color: #4aa3bf;
+        }
+
+        .results {
+            margin-top: 1em;
+        }
+
+        .glyph-row {
+            margin-bottom: 10px;
+        }
+
+        .glyph-label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        select {
+            display: inline-block;
+            margin-right: 10px;
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #444;
+            color: #f5f6fa;
+            transition: border-color 0.3s ease;
+            width: 150px; /* Ensure dropdowns have enough width */
+        }
+
+        select:focus {
+            border-color: #5bbad5;
+        }
+
+        h1 {
+            font-size: 2em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1 class="center-align">Antimatter Dimensions Glyph Seed Calculator</h1>
+        <form id="glyph-calculator">
+            <div class="form-group">
+                <label for="min_rarity">Min rarity:</label>
+                <input type="number" id="min_rarity" value="40" min="0" max="100" class="form-control" oninput="validateInput(this)">
+            </div>
+            <div class="form-group">
+                <label for="glyph_amount">Amount of Glyphs:</label>
+                <input type="number" id="glyph_amount" value="2" min="1" max="4" class="form-control" onchange="updateGlyphRows()" oninput="validateInput(this)">
+            </div>
+            <div id="glyphs_container"></div>
+            <button type="button" id="calculate_button" class="btn waves-effect waves-light" onclick="calculate();">CALCULATE</button>
+        </form>
+        <div id="glyphs" class="results"></div>
+    </div>
+
+    <script type="text/javascript" src="js/glyph_seed_calculator.js"></script>
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+    <script>
+        const glyphTypes = {
+            "Power": {
+                second: [{ text: "AD pow", value: 16 }],
+                third: [
+                    { text: "AD mult", value: 17 },
+                    { text: "DB mult", value: 18 },
+                    { text: "Buy 10 mult", value: 19 }
+                ]
+            },
+            "Infinity": {
+                second: [{ text: "ID pow", value: 12 }],
+                third: [
+                    { text: "IPow conversion", value: 13 },
+                    { text: "IP mult", value: 14 },
+                    { text: "Infinities mult", value: 15 }
+                ]
+            },
+            "Replication": {
+                second: [
+                    { text: "Rep speed", value: 8 },
+                    { text: "Rep mult pow", value: 9 },
+                    { text: "Rep DT", value: 10 },
+                    { text: "Rep GL", value: 11 }
+                ],
+                third: [
+                    { text: "Rep speed", value: 8 },
+                    { text: "Rep mult pow", value: 9 },
+                    { text: "Rep DT", value: 10 },
+                    { text: "Rep GL", value: 11 }
+                ]
+            },
+            "Time": {
+                second: [{ text: "TD pow", value: 0 }],
+                third: [
+                    { text: "Game speed", value: 1 },
+                    { text: "Eternities mult", value: 2 },
+                    { text: "EP mult", value: 3 }
+                ]
+            },
+            "Dilation": {
+                second: [
+                    { text: "DT mult", value: 4 },
+                    { text: "TG mult", value: 5 },
+                    { text: "TT gen", value: 6 },
+                    { text: "Dilation AD pow", value: 7 }
+                ],
+                third: [
+                    { text: "DT mult", value: 4 },
+                    { text: "TG mult", value: 5 },
+                    { text: "TT gen", value: 6 },
+                    { text: "Dilation AD pow", value: 7 }
+                ]
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            updateGlyphRows();
+        });
+
+        function validateInput(input) {
+            const min = parseInt(input.min);
+            const max = parseInt(input.max);
+            const value = parseInt(input.value);
+
+            if (value < min) {
+                input.value = min;
+            } else if (value > max) {
+                input.value = max;
+            }
+        }
+
+        function updateGlyphRows() {
+            const glyphAmount = document.getElementById('glyph_amount').value;
+            const container = document.getElementById('glyphs_container');
+            container.innerHTML = '';
+
+            for (let i = 1; i <= glyphAmount; i++) {
+                const row = document.createElement('div');
+                row.classList.add('form-group', 'glyph-row');
+
+                const label = document.createElement('label');
+                label.classList.add('glyph-label');
+                label.textContent = `Glyph ${i}:`;
+
+                let defaultType = "Power";
+                if (i === 2) defaultType = "Time";
+                if (i === 3) defaultType = "Replication";
+
+                const typeSelect = createDropdown(`glyph${i}_type`, Object.keys(glyphTypes), defaultType);
+                typeSelect.addEventListener('change', () => {
+                    updateGlyphOptions(i);
+                    updateThirdDropdown(i);
+                });
+
+                const secondSelect = createDropdown(`glyph${i}_second`, glyphTypes[defaultType].second, glyphTypes[defaultType].second[0].value);
+                secondSelect.disabled = glyphTypes[defaultType].second.length === 1;
+
+                const thirdDefaultValue = getThirdDefaultValue(defaultType);
+                const thirdSelect = createDropdown(`glyph${i}_third`, glyphTypes[defaultType].third, thirdDefaultValue);
+
+                if (defaultType === "Replication" || defaultType === "Dilation") {
+                    secondSelect.addEventListener('change', () => updateThirdDropdown(i));
+                }
+
+                row.appendChild(label);
+                row.appendChild(typeSelect);
+                row.appendChild(secondSelect);
+                row.appendChild(thirdSelect);
+
+                container.appendChild(row);
+
+                // Ensure options are updated on initialization
+                updateGlyphOptions(i);
+                updateThirdDropdown(i);
+            }
+        }
+
+        function getThirdDefaultValue(type) {
+            if (type === "Power") return 18; // DB mult
+            if (type === "Replication") return 10; // Rep DT
+            if (type === "Time") return 3; // EP mult
+            return glyphTypes[type].third[0].value;
+        }
+
+        function createDropdown(id, options, defaultValue) {
+            const select = document.createElement('select');
+            select.id = id;
+            select.classList.add('form-control');
+
+            options.forEach(option => {
+                const optionElement = document.createElement('option');
+                optionElement.textContent = option.text || option;
+                optionElement.value = option.value || option;
+                if (option.value == defaultValue || option == defaultValue) {
+                    optionElement.selected = true;
+                }
+                select.appendChild(optionElement);
+            });
+
+            return select;
+        }
+
+        function updateDropdownOptions(select, options, defaultValue) {
+            select.innerHTML = '';
+            options.forEach(option => {
+                const optionElement = document.createElement('option');
+                optionElement.textContent = option.text;
+                optionElement.value = option.value;
+                if (option.value == defaultValue) {
+                    optionElement.selected = true;
+                }
+                select.appendChild(optionElement);
+            });
+        }
+
+        function updateGlyphOptions(glyphIndex) {
+            const typeSelect = document.getElementById(`glyph${glyphIndex}_type`);
+            const secondSelect = document.getElementById(`glyph${glyphIndex}_second`);
+            const thirdSelect = document.getElementById(`glyph${glyphIndex}_third`);
+
+            const selectedType = typeSelect.value;
+            updateDropdownOptions(secondSelect, glyphTypes[selectedType].second, glyphTypes[selectedType].second[0].value);
+            secondSelect.disabled = glyphTypes[selectedType].second.length === 1;
+            updateDropdownOptions(thirdSelect, glyphTypes[selectedType].third, getThirdDefaultValue(selectedType));
+        }
+
+        function updateThirdDropdown(glyphIndex) {
+            const typeSelect = document.getElementById(`glyph${glyphIndex}_type`);
+            const secondSelect = document.getElementById(`glyph${glyphIndex}_second`);
+            const thirdSelect = document.getElementById(`glyph${glyphIndex}_third`);
+
+            const selectedType = typeSelect.value;
+            const secondValue = secondSelect.value;
+            const options = glyphTypes[selectedType].third.filter(option => option.value != secondValue);
+
+            updateDropdownOptions(thirdSelect, options, getThirdDefaultValue(selectedType));
+        }
+    </script>
+</body>
+
+</html>
