@@ -1,15 +1,41 @@
-const min_rarity_text = document.getElementById("min_rarity");
 const glyph_amount_text = document.getElementById("glyph_amount");
 const glyphs_textarea = document.getElementById("glyphs");
-
-const types = ["power", "time"];
-let requiredEffects = [327680, 9];
-let minStrength;
-let simulationStartAbsolute;
-
-const SECOND_GAUSSIAN_DEFAULT_VALUE = 1e6;
+const pause_button = document.getElementById("pause_button");
+pause_button.style.visibility = "hidden";
 
 const REALITIES_BEFORE_REDRAW = 1000000;
+const maxSeed = 2147483647;
+const SECOND_GAUSSIAN_DEFAULT_VALUE = 1e6;
+
+let requiredTypes = []; //[0, 3];
+let requiredEffects = []; //[327680, 9];
+let requiredSecondEffectsAdjusted = [];
+let simulationStartAbsolute;
+
+let initialSeed = -1;
+let seed = -1;
+let secondGaussian = SECOND_GAUSSIAN_DEFAULT_VALUE;
+let checked = 0;
+let foundSeeds = 0;
+
+let bestMinRarity = -1;
+let bestMinRaritySeed = -1;
+let bestMinRaritySeedRarities = [];
+
+let bestAverageRarity = -1;
+let bestAverageRaritySeed = -1;
+let bestAverageRaritySeedRarities = [];
+
+let bestMaxRarity = -1;
+let bestMaxRaritySeed = -1;
+let bestMaxRaritySeedRarities = [];
+
+let worstMaxRarity = 101;
+let worstMaxRaritySeed = -1;
+let wortsMaxRaritySeedRarities = [];
+
+let started = false;
+let running = false;
 
 BASIC_GLYPH_TYPES = [
   "power",
@@ -27,28 +53,59 @@ GLYPH_EFFECTS = {
   "dilation": [4, 5, 6, 7]
 }
 
-let initialSeed = -1;
-let seed = -1;
-let secondGaussian = SECOND_GAUSSIAN_DEFAULT_VALUE;
-let checked = 0;
-
 function calculate() {
+  initPermuations();
+
   checked = 0;
-  glyphs_textarea.innerHTML = "Seeds simulated: " + checked + "<br>" + "Simulation speed: 0.00 seeds/s";;
+  foundSeeds = 0;
 
-  minStrength = rarityToStrength(parseInt(min_rarity_text.value));
-  const glyphAmount = parseInt(glyph_amount_text.value);
+  bestMinRarity = -1;
+  bestMinRaritySeed = -1;
 
-  requiredEffects = [];
-  for (let g = 1; g <= glyphAmount; g++) {
-    const secondSelect = document.getElementById(`glyph${g}_second`);
-    const thirdSelect = document.getElementById(`glyph${g}_third`);
-    requiredEffects.push((1 << parseInt(secondSelect.value)) + (1 << parseInt(thirdSelect.value)));
-  }
+  bestAverageRarity = -1;
+  bestAverageRaritySeed = -1;
+
+  bestMaxRarity = -1;
+  bestMaxRaritySeed = -1;
+
+  worstMaxRarity = 101;
+  worstMaxRaritySeed = -1;
 
   simulationStartAbsolute = null;
 
+  glyphs_textarea.innerHTML = "Seeds simulated: " + checked + "/" + maxSeed + ", 0.00%<br>" + "Simulation speed: 0.00 seeds/s";;
+
+  const glyphAmount = parseInt(glyph_amount_text.value);
+
+  requiredTypes = [];
+  requiredEffects = [];
+  requiredSecondEffectsAdjusted = [];
+  const startID = [16, 12, 8, 0, 4];
+
+  for (let g = 1; g <= glyphAmount; g++) {
+    const typeSelect = document.getElementById(`glyph${g}_type`);
+    const type = parseInt(typeSelect.value);
+    requiredTypes.push(type);
+
+    const secondSelect = document.getElementById(`glyph${g}_second`);
+    const thirdSelect = document.getElementById(`glyph${g}_third`);
+    requiredEffects.push((1 << parseInt(secondSelect.value)) + (1 << parseInt(thirdSelect.value)));
+    requiredSecondEffectsAdjusted.push(parseInt(thirdSelect.value) - startID[type]);
+  }
+
+  started = true;
+  running = true;
+  pause_button.style.visibility = "visible";
+  pause_button.innerHTML = "PAUSE";
   setTimeout(calculateRealities, 100);
+}
+
+function pause() {
+  if (started) {
+    running = !running;
+    pause_button.innerHTML = running ? "PAUSE" : "RESUME";
+    if (running) setTimeout(calculateRealities, 0);
+  }
 }
 
 function calculateRealities() {
@@ -56,70 +113,217 @@ function calculateRealities() {
   if (simulationStartAbsolute == null) {
     simulationStartAbsolute = simulationStart;
   }
-  initialSeed = Math.floor(Date.now() * Math.random() + 1);
-  let found;
 
-  for (let r = 0; r < REALITIES_BEFORE_REDRAW; r++) {
+  const validInitSeeds = generateValidInitSeeds(requiredTypes, requiredSecondEffectsAdjusted, checked + 1, checked + REALITIES_BEFORE_REDRAW);
+
+  for (let v = 0; v < validInitSeeds.length; v++) {
+    initialSeed = validInitSeeds[v];
     seed = initialSeed;
+
     secondGaussian = SECOND_GAUSSIAN_DEFAULT_VALUE;
-    found = true;
+    let found = true;
+    let rarities = [];
 
     for (let i = 1; i <= requiredEffects.length; i++) {
       const glyphs = uniformGlyphs(1, i);
-      const glyph = glyphs.find(g => g.strength >= minStrength && g.effects == requiredEffects[i - 1]);
+      const glyph = glyphs.find(g => g.effects == requiredEffects[i - 1]);
       if (glyph == undefined) {
         found = false;
         break;
       }
+      rarities.push(strengthToRarity(glyph.strength));
     }
 
     if (found) {
+      foundSeeds++;
+
+      const minRarity = Math.min(...rarities);
+      const avgRarity = rarities.reduce((p,c,_,a) => p + c/a.length, 0);
+      const maxRarity = Math.max(...rarities);
+
+      if (minRarity > bestMinRarity) {
+        bestMinRarity = minRarity;
+        bestMinRaritySeed = initialSeed;
+        bestMinRaritySeedRarities = rarities;
+      }
+
+      if (avgRarity > bestAverageRarity) {
+        bestAverageRarity = avgRarity;
+        bestAverageRaritySeed = initialSeed;
+        bestAverageRaritySeedRarities = rarities;
+      }
+
+      if (maxRarity > bestMaxRarity) {
+        bestMaxRarity = maxRarity;
+        bestMaxRaritySeed = initialSeed;
+        bestMaxRaritySeedRarities = rarities;
+      }
+
+      if (maxRarity < worstMaxRarity) {
+        worstMaxRarity = maxRarity;
+        worstMaxRaritySeed = initialSeed;
+        worstMaxRaritySeedRarities = rarities;
+      }
+
+      worstMaxRarity
+    }
+
+    if (initialSeed >= maxSeed) {
       break;
     }
-
-    initialSeed++;
-    checked++;
   }
 
-  if (found) {
-    let text = "";
-    let timeElapsed = (Date.now() - simulationStartAbsolute) / 1000;
-    let speed = (checked / timeElapsed).toFixed(2);
-    text += "Seeds simulated: " + checked + "<br>" + "Simulation speed: " + speed + " seeds/s<br><br>";
+  checked += REALITIES_BEFORE_REDRAW;
+  const finished = checked >= maxSeed;
 
-    text += "Rarities: "
-    seed = initialSeed;
-    secondGaussian = SECOND_GAUSSIAN_DEFAULT_VALUE;
-    for (let i = 1; i <= requiredEffects.length; i++) {
-      const glyphs = uniformGlyphs(1, i);
-      const glyph = glyphs.find(g => g.strength >= minStrength && g.effects == requiredEffects[i - 1]);
-      text += strengthToRarity(glyph.strength).toFixed(2) + "%";
-      if (i < requiredEffects.length) text += ", ";
-    }
-    text += "<br><br>"; 
+  let timeElapsed;
+  let speed;
 
-    text += "player.reality.seed = " + initialSeed + ";<br>"
-    text += "player.reality.initialSeed = " + initialSeed + ";"
-
-    glyphs_textarea.innerHTML = text;
+  if (finished) {
+    timeElapsed = (Date.now() - simulationStartAbsolute) / 1000;
+    speed = (Math.min(checked, maxSeed) / timeElapsed).toFixed(2);
   } else {
-    let timeElapsed = (Date.now() - simulationStart) / 1000;
-    let speed = (REALITIES_BEFORE_REDRAW / timeElapsed).toFixed(2);
-    glyphs_textarea.innerHTML = "Seeds simulated: " + checked + "<br>" + "Simulation speed: " + speed + " seeds/s";
-    setTimeout(calculateRealities, 0);
+    timeElapsed = (Date.now() - simulationStart) / 1000;
+    speed = (REALITIES_BEFORE_REDRAW / timeElapsed).toFixed(2);
+  }
+
+  let text = "";
+  
+  text += "Seeds simulated: " + Math.min(checked, maxSeed) + "/" + maxSeed + ", " + (100 * Math.min(checked, maxSeed) / maxSeed).toFixed(2) + "%<br>" + "Simulation speed: " + speed + " seeds/s<br><br>";
+
+  if (foundSeeds > 0) {
+    text += "Found seeds: " + foundSeeds + "<br><br>";
+
+    text += "Best min rarity: " + bestMinRarity.toFixed(2) + "%" + "<br>";
+    text += "Rarities: " + bestMinRaritySeedRarities.map(r => r.toFixed(2) + "%").join(", ") + "<br>";
+    text += "player.reality.seed = " + bestMinRaritySeed + ";<br>"
+    text += "player.reality.initialSeed = " + bestMinRaritySeed + ";<br><br>"
+
+    text += "Best average rarity: " + bestAverageRarity.toFixed(2) + "%" + "<br>";
+    text += "Rarities: " + bestAverageRaritySeedRarities.map(r => r.toFixed(2) + "%").join(", ") + "<br>";
+    text += "player.reality.seed = " + bestAverageRaritySeed + ";<br>"
+    text += "player.reality.initialSeed = " + bestAverageRaritySeed + ";<br><br>"
+
+    text += "Best max rarity: " + bestMaxRarity.toFixed(2) + "%" + "<br>";
+    text += "Rarities: " + bestMaxRaritySeedRarities.map(r => r.toFixed(2) + "%").join(", ") + "<br>";
+    text += "player.reality.seed = " + bestMaxRaritySeed + ";<br>"
+    text += "player.reality.initialSeed = " + bestMaxRaritySeed + ";<br><br>"
+
+    text += "Worst max rarity: " + worstMaxRarity.toFixed(2) + "%" + "<br>";
+    text += "Rarities: " + worstMaxRaritySeedRarities.map(r => r.toFixed(2) + "%").join(", ") + "<br>";
+    text += "player.reality.seed = " + worstMaxRaritySeed + ";<br>"
+    text += "player.reality.initialSeed = " + worstMaxRaritySeed + ";<br><br>"
+  } else {
+    text += "No found seeds yet."
+  }
+
+  glyphs_textarea.innerHTML = text;
+
+  if (!finished) {
+    if (running) setTimeout(calculateRealities, 0);
+  } else {
+    started = false;
+    running = false;
+    pause_button.style.visibility = "hidden";
   }
 }
 
+const factorials = [1, 1, 2, 6, 24, 120];
+
+const permutations4 = [];
+const permutations5 = [];
+
+function initPermuations() {
+  for (let p = 0; p < 120; p++) {
+    permutations4.push(getPermutation(p, 4))
+    permutations5.push(getPermutation(p, 5))
+  }
+}
+
+function getPermutation(index, n) {
+  const elements = (n == 5) ? [0, 1, 2, 3, 4] : [0, 1, 2, 3];
+  const result = [];
+  let perm = [...elements];
+  let fact = factorials[n - 1];
+
+  for (let i = n; i > 0; i--) {
+    let pos = Math.floor(index / fact);
+    result.push(perm.splice(pos, 1)[0]);
+    index %= fact;
+    if (i > 1) fact /= i - 1;
+  }
+
+  return result;
+}
+
+function generateValidInitSeeds(types, effects, minValue, maxValue) {
+  const validSeeds = [];
+  const numPerm = 120;
+  const effectNumPerm = 24;
+
+  for (let initSeed = minValue; initSeed <= maxValue; initSeed++) {
+    const typeLexIndex = initSeed % 1123;
+    let index = typeLexIndex % numPerm;
+    const perm = permutations5[index];
+
+    let isValid = true;
+
+    for (let r = 0; r < types.length; r++) {
+      const type = types[r];
+      const groupIndex = r % 5;
+      const removedTypeIndex = perm[groupIndex];
+
+      if (removedTypeIndex == type) {
+        isValid = false;
+        break;
+      }
+
+      const typesThisReality = [0, 1, 2, 3, 4];
+      typesThisReality.splice(removedTypeIndex, 1);
+      const typeIndex = typesThisReality.findIndex(t => t == type);
+      const checkEffect = (initSeed + r + 1 + typeIndex) % 2 == 0;
+
+      if (!checkEffect) continue;
+      if (type == 2 || type == 4) {
+        isValid = false;
+        break;
+      }
+
+      const effect = effects[r];
+
+      const typePermIndex = [0, 0, 0, 0, 0];
+      for (let i = 0; i < groupIndex; i++) {
+        for (let t = 0; t < 5; t++) {
+          if (t !== perm[i]) typePermIndex[t]++;
+        }
+      }
+
+      const effectLexIndex = 5 * type + initSeed % 11;
+      let effectIndex = effectLexIndex % effectNumPerm;
+      const effectPerm = permutations4[effectIndex];
+
+      if (effect != effectPerm[typePermIndex[type]]) {
+        isValid = false;
+        break;
+      }
+    }
+
+    if (isValid) {
+      validSeeds.push(initSeed);
+    }
+  }
+
+  return validSeeds;
+}
+
 function uniformGlyphs(level, realityCount) {
-  const groupNum = Math.floor((realityCount - 1) / 5);
   const groupIndex = (realityCount - 1) % 5;
 
   const initSeed = initialSeed;
 
-  const typeLexIndex = (31 + initSeed % 7) * groupNum + initSeed % 1123;
+  const typeLexIndex = initSeed % 1123;
   const typeLen = 5;
-  let numPerm = 1;
-  for (let n = 1; n <= typeLen; n++) numPerm *= n;
+  const numPerm = 120;
   let index = typeLexIndex % numPerm;
   let remOrder = numPerm / typeLen;
   const ordered = [0, 1, 2, 3, 4];
@@ -146,10 +350,9 @@ function uniformGlyphs(level, realityCount) {
   for (let i = 0; i < 4; i++) {
     const type = typesThisReality[i]
 
-    const effectLexIndex = 5 * type + (7 + initSeed % 5) * groupNum + initSeed % 11;
+    const effectLexIndex = 5 * type + initSeed % 11;
     const effectLen = 4;
-    let numPerm = 1;
-    for (let n = 1; n <= effectLen; n++) numPerm *= n;
+    const numPerm = 24;
     let index = effectLexIndex % numPerm;
     let remOrder = numPerm / effectLen;
     const ordered = [0, 1, 2, 3];

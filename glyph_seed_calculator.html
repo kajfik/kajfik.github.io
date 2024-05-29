@@ -119,15 +119,12 @@
         <h1 class="center-align">Antimatter Dimensions Glyph Seed Calculator</h1>
         <form id="glyph-calculator">
             <div class="form-group">
-                <label for="min_rarity">Min rarity:</label>
-                <input type="number" id="min_rarity" value="40" min="0" max="100" class="form-control" oninput="validateInput(this)">
-            </div>
-            <div class="form-group">
                 <label for="glyph_amount">Amount of Glyphs:</label>
                 <input type="number" id="glyph_amount" value="2" min="1" max="4" class="form-control" onchange="updateGlyphRows()" oninput="validateInput(this)">
             </div>
             <div id="glyphs_container"></div>
             <button type="button" id="calculate_button" class="btn waves-effect waves-light" onclick="calculate();">CALCULATE</button>
+            <button type="button" id="pause_button" class="btn waves-effect waves-light" onclick="pause();">PAUSE</button>
         </form>
         <div id="glyphs" class="results"></div>
     </div>
@@ -266,14 +263,16 @@
             select.id = id;
             select.classList.add('form-control');
 
+            let value = 0;
             options.forEach(option => {
                 const optionElement = document.createElement('option');
                 optionElement.textContent = option.text || option;
-                optionElement.value = option.value || option;
+                optionElement.value = option.value || value;
                 if (option.value == defaultValue || option == defaultValue) {
                     optionElement.selected = true;
                 }
                 select.appendChild(optionElement);
+                value++;
             });
 
             return select;
@@ -297,7 +296,7 @@
             const secondSelect = document.getElementById(`glyph${glyphIndex}_second`);
             const thirdSelect = document.getElementById(`glyph${glyphIndex}_third`);
 
-            const selectedType = typeSelect.value;
+            const selectedType = typeSelect.options[typeSelect.selectedIndex].text;
             updateDropdownOptions(secondSelect, glyphTypes[selectedType].second, glyphTypes[selectedType].second[0].value);
             secondSelect.disabled = glyphTypes[selectedType].second.length === 1;
             updateDropdownOptions(thirdSelect, glyphTypes[selectedType].third, getThirdDefaultValue(selectedType));
@@ -308,7 +307,7 @@
             const secondSelect = document.getElementById(`glyph${glyphIndex}_second`);
             const thirdSelect = document.getElementById(`glyph${glyphIndex}_third`);
 
-            const selectedType = typeSelect.value;
+            const selectedType = typeSelect.options[typeSelect.selectedIndex].text;
             const secondValue = secondSelect.value;
             const options = glyphTypes[selectedType].third.filter(option => option.value != secondValue);
 
