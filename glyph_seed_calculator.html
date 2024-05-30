@@ -125,6 +125,7 @@
             <div id="glyphs_container"></div>
             <button type="button" id="calculate_button" class="btn waves-effect waves-light" onclick="calculate();">CALCULATE</button>
             <button type="button" id="pause_button" class="btn waves-effect waves-light" onclick="pause();">PAUSE</button>
+            <button type="button" id="export_button" class="btn waves-effect waves-light" onclick="exportData();">EXPORT</button>
         </form>
         <div id="glyphs" class="results"></div>
     </div>
@@ -221,6 +222,8 @@
                 let defaultType = "Power";
                 if (i === 2) defaultType = "Time";
                 if (i === 3) defaultType = "Replication";
+                if (i === 4) defaultType = "Dilation";
+                if (i === 5) defaultType = "Replication";
 
                 const typeSelect = createDropdown(`glyph${i}_type`, Object.keys(glyphTypes), defaultType);
                 typeSelect.addEventListener('change', () => {
@@ -234,9 +237,7 @@
                 const thirdDefaultValue = getThirdDefaultValue(defaultType);
                 const thirdSelect = createDropdown(`glyph${i}_third`, glyphTypes[defaultType].third, thirdDefaultValue);
 
-                if (defaultType === "Replication" || defaultType === "Dilation") {
-                    secondSelect.addEventListener('change', () => updateThirdDropdown(i));
-                }
+                secondSelect.addEventListener('change', () => updateThirdDropdown(i));
 
                 row.appendChild(label);
                 row.appendChild(typeSelect);

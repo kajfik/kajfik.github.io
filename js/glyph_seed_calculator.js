@@ -1,7 +1,9 @@
 const glyph_amount_text = document.getElementById("glyph_amount");
 const glyphs_textarea = document.getElementById("glyphs");
 const pause_button = document.getElementById("pause_button");
+const export_button = document.getElementById("export_button");
 pause_button.style.visibility = "hidden";
+export_button.style.visibility = "hidden";
 
 const REALITIES_BEFORE_REDRAW = 1000000;
 const maxSeed = 4294967295;
@@ -10,6 +12,7 @@ const SECOND_GAUSSIAN_DEFAULT_VALUE = 1e6;
 let requiredTypes = []; //[0, 3];
 let requiredEffects = []; //[327680, 9];
 let requiredSecondEffectsAdjusted = [];
+let requiredEffectsExport = [];
 let simulationStartAbsolute;
 
 let initialSeed = -1;
@@ -53,6 +56,16 @@ GLYPH_EFFECTS = {
   "dilation": [4, 5, 6, 7]
 }
 
+
+
+function pause() {
+  if (started) {
+    running = !running;
+    pause_button.innerHTML = running ? "PAUSE" : "RESUME";
+    if (running) setTimeout(calculateRealities, 0);
+  }
+}
+
 function calculate() {
   initPermuations();
 
@@ -79,6 +92,7 @@ function calculate() {
 
   requiredTypes = [];
   requiredEffects = [];
+  requiredEffectsExport = [];
   requiredSecondEffectsAdjusted = [];
   const startID = [16, 12, 8, 0, 4];
 
@@ -91,20 +105,19 @@ function calculate() {
     const thirdSelect = document.getElementById(`glyph${g}_third`);
     requiredEffects.push((1 << parseInt(secondSelect.value)) + (1 << parseInt(thirdSelect.value)));
     requiredSecondEffectsAdjusted.push(parseInt(thirdSelect.value) - startID[type]);
+    requiredEffectsExport.push([parseInt(secondSelect.value) - startID[type], parseInt(thirdSelect.value) - startID[type]]);
   }
 
-  started = true;
-  running = true;
-  pause_button.style.visibility = "visible";
-  pause_button.innerHTML = "PAUSE";
-  setTimeout(calculateRealities, 100);
-}
-
-function pause() {
-  if (started) {
-    running = !running;
-    pause_button.innerHTML = running ? "PAUSE" : "RESUME";
-    if (running) setTimeout(calculateRealities, 0);
+  const header = exportHeader();
+  if (header in stored) {
+    glyphs_textarea.innerHTML = convertExportToText(header)
+  } else {
+    started = true;
+    running = true;
+    export_button.style.visibility = "hidden";
+    pause_button.style.visibility = "visible";
+    pause_button.innerHTML = "PAUSE";
+    setTimeout(calculateRealities, 100);
   }
 }
 
@@ -173,7 +186,7 @@ function calculateRealities() {
     }
   }
 
-  checked += REALITIES_BEFORE_REDRAW;
+  checked = Math.min(checked + REALITIES_BEFORE_REDRAW, maxSeed);
   const finished = checked >= maxSeed;
 
   let timeElapsed;
@@ -181,7 +194,7 @@ function calculateRealities() {
 
   if (finished) {
     timeElapsed = (Date.now() - simulationStartAbsolute) / 1000;
-    speed = (Math.min(checked, maxSeed) / timeElapsed).toFixed(2);
+    speed = (checked / timeElapsed).toFixed(2);
   } else {
     timeElapsed = (Date.now() - simulationStart) / 1000;
     speed = (REALITIES_BEFORE_REDRAW / timeElapsed).toFixed(2);
@@ -189,7 +202,7 @@ function calculateRealities() {
 
   let text = "";
   
-  text += "Seeds simulated: " + Math.min(checked, maxSeed) + "/" + maxSeed + ", " + (100 * Math.min(checked, maxSeed) / maxSeed).toFixed(2) + "%<br>" + "Simulation speed: " + speed + " seeds/s<br><br>";
+  text += "Seeds simulated: " + checked + "/" + maxSeed + ", " + (100 * checked / maxSeed).toFixed(2) + "%<br>" + "Simulation speed: " + speed + " seeds/s<br><br>";
 
   if (foundSeeds > 0) {
     text += "Found seeds: " + foundSeeds + "<br><br>";
@@ -225,6 +238,8 @@ function calculateRealities() {
     started = false;
     running = false;
     pause_button.style.visibility = "hidden";
+    export_button.style.visibility = "visible";
+    export_button.innerHTML = "EXPORT";
   }
 }
 
@@ -533,3 +548,89 @@ function getBitIndexes(num) {
   }
   return indexes;
 }
+
+function exportHeader() {
+  const glyphAmount = requiredTypes.length;
+
+  let text = glyphAmount + ";";
+  text += requiredEffectsExport.map((element, i) => 
+    requiredTypes[i] + "," + element.join(",")
+  ).join(";");
+  text += "";
+  return text;
+}
+
+function exportData() {
+  if (checked >= maxSeed) {
+    let text = "\"" + exportHeader() + "\"";
+    text += ": \"";
+    text += foundSeeds;
+    if (foundSeeds > 0) {
+      text += ";";
+
+      text += bestMinRaritySeedRarities.map(r => r.toFixed(2)).join(",") + ";";
+      text += bestMinRaritySeed + ";";
+
+      text += bestAverageRaritySeedRarities.map(r => r.toFixed(2)).join(",") + ";";
+      text += bestAverageRaritySeed + ";";
+
+      text += bestMaxRaritySeedRarities.map(r => r.toFixed(2)).join(",") + ";";
+      text += bestMaxRaritySeed + ";";
+
+      text += worstMaxRaritySeedRarities.map(r => r.toFixed(2)).join(",") + ";";
+      text += worstMaxRaritySeed;
+    }
+    text += "\"";
+  
+    navigator.clipboard.writeText(text);
+    export_button.innerHTML = "EXPORTED";
+  }
+}
+
+function convertExportToText(header) {
+  const data = stored[header];
+  const dataParts = data.split(";");
+  const _foundSeeds = parseInt(dataParts[0]);
+  let text = "";
+  if (_foundSeeds > 0) {
+    text += "Found seeds: " + _foundSeeds + "<br><br>";
+
+    let rarities = dataParts[1].split(",").map(Number);
+    let _seed = dataParts[2];
+    text += "Best min rarity: " + Math.min(...rarities).toFixed(2) + "%" + "<br>";
+    text += "Rarities: " + rarities.map(r => r.toFixed(2) + "%").join(", ") + "<br>";
+    text += "player.reality.seed = " + _seed + ";<br>"
+    text += "player.reality.initialSeed = " + _seed + ";<br><br>"
+
+    rarities = dataParts[3].split(",").map(Number);
+    _seed = dataParts[4];
+    text += "Best average rarity: " + rarities.reduce((p,c,_,a) => p + c/a.length, 0).toFixed(2) + "%" + "<br>";
+    text += "Rarities: " + rarities.map(r => r.toFixed(2) + "%").join(", ") + "<br>";
+    text += "player.reality.seed = " + _seed + ";<br>"
+    text += "player.reality.initialSeed = " + _seed + ";<br><br>"
+
+    rarities = dataParts[5].split(",").map(Number);
+    _seed = dataParts[6];
+    text += "Best max rarity: " + Math.max(...rarities).toFixed(2) + "%" + "<br>";
+    text += "Rarities: " + rarities.map(r => r.toFixed(2) + "%").join(", ") + "<br>";
+    text += "player.reality.seed = " + _seed + ";<br>"
+    text += "player.reality.initialSeed = " + _seed + ";<br><br>"
+
+    rarities = dataParts[7].split(",").map(Number);
+    _seed = dataParts[8];
+    text += "Worst max rarity: " + Math.max(...rarities).toFixed(2) + "%" + "<br>";
+    text += "Rarities: " + rarities.map(r => r.toFixed(2) + "%").join(", ") + "<br>";
+    text += "player.reality.seed = " + _seed + ";<br>"
+    text += "player.reality.initialSeed = " + _seed + ";<br><br>"
+  } else {
+    text += "No found seeds yet."
+  }
+  return text;
+}
+
+const stored = {
+  "2;0,0,2;3,0,3": "32574060;80.80,70.40;184504334;80.80,70.40;184504334;100.00,18.00;1428455986;0.10,0.10;14551398",
+  "5;0,0,2;3,0,3;2,0,2;4,0,1;2,0,2": "4049;33.00,46.30,43.40,30.50,45.20;988103260;22.50,9.30,65.90,23.40,100.00;3893097748;2.20,14.00,38.70,6.60,100.00;637873490;3.50,6.60,12.70,12.40,12.30;2966232424",
+  "4;0,0,2;3,0,3;2,0,2;4,0,1": "182922;48.50,45.60,43.60,49.90;2522996380;44.30,68.80,22.70,70.10;3674458196;15.30,19.40,45.60,88.40;3013597478;0.10,0.50,2.00,1.70;4027579492",
+  
+};
