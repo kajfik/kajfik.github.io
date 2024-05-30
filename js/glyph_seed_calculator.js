@@ -4,7 +4,7 @@ const pause_button = document.getElementById("pause_button");
 pause_button.style.visibility = "hidden";
 
 const REALITIES_BEFORE_REDRAW = 1000000;
-const maxSeed = 2147483647;
+const maxSeed = 4294967295;
 const SECOND_GAUSSIAN_DEFAULT_VALUE = 1e6;
 
 let requiredTypes = []; //[0, 3];
