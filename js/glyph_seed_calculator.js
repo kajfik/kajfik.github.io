@@ -30,6 +30,7 @@ let bestAverageRaritySeed = -1;
 let bestAverageRaritySeedRarities = [];
 
 let bestMaxRarity = -1;
+let bestMaxMinRarity = -1;
 let bestMaxRaritySeed = -1;
 let bestMaxRaritySeedRarities = [];
 
@@ -79,6 +80,7 @@ function calculate() {
   bestAverageRaritySeed = -1;
 
   bestMaxRarity = -1;
+  bestMaxMinRarity = -1;
   bestMaxRaritySeed = -1;
 
   worstMaxRarity = 101;
@@ -166,8 +168,9 @@ function calculateRealities() {
         bestAverageRaritySeedRarities = rarities;
       }
 
-      if (maxRarity > bestMaxRarity) {
+      if (maxRarity > bestMaxRarity || maxRarity >= bestMaxRarity && minRarity > bestMaxMinRarity) {
         bestMaxRarity = maxRarity;
+        bestMaxMinRarity = minRarity;
         bestMaxRaritySeed = initialSeed;
         bestMaxRaritySeedRarities = rarities;
       }
@@ -629,8 +632,6 @@ function convertExportToText(header) {
 }
 
 const stored = {
-  "2;0,0,2;3,0,3": "32574060;80.80,70.40;184504334;80.80,70.40;184504334;100.00,18.00;1428455986;0.10,0.10;14551398",
-  "5;0,0,2;3,0,3;2,0,2;4,0,1;2,0,2": "4049;33.00,46.30,43.40,30.50,45.20;988103260;22.50,9.30,65.90,23.40,100.00;3893097748;2.20,14.00,38.70,6.60,100.00;637873490;3.50,6.60,12.70,12.40,12.30;2966232424",
   "4;0,0,2;3,0,3;2,0,2;4,0,1": "182922;48.50,45.60,43.60,49.90;2522996380;44.30,68.80,22.70,70.10;3674458196;15.30,19.40,45.60,88.40;3013597478;0.10,0.50,2.00,1.70;4027579492",
-  
+  "5;0,0,2;3,0,3;2,0,2;4,0,1;2,0,2": "4049;33.00,46.30,43.40,30.50,45.20;988103260;22.50,9.30,65.90,23.40,100.00;3893097748;22.50,9.30,65.90,23.40,100.00;3893097748;3.50,6.60,12.70,12.40,12.30;2966232424",
 };
