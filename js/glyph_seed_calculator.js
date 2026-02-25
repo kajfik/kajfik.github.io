@@ -6,13 +6,14 @@ pause_button.style.visibility = "hidden";
 export_button.style.visibility = "hidden";
 
 const maxSeed = 4294967295;
+const numWorkers = Math.max(1, navigator.hardwareConcurrency || 4);
 
 let requiredTypes = [];
 let requiredEffects = [];
 let requiredEffectsExport = [];
 let requiredSecondEffectsAdjusted = [];
 
-// Simulation state — mirrored from the worker for display and pause/resume
+// Merged simulation state — computed from all worker states, also used by exportData()
 let checked = 0;
 let foundSeeds = 0;
 let bestMinRarity = -1;
@@ -29,71 +30,142 @@ let worstMaxRarity = 101;
 let worstMaxRaritySeed = -1;
 let worstMaxRaritySeedRarities = [];
 
-let worker = null;
+// Per-worker tracking
+let workers = new Array(numWorkers).fill(null);
+let workerStates = new Array(numWorkers).fill(null);
+let workerDone = new Array(numWorkers).fill(false);
+
 let started = false;
 let running = false;
 
+// ── Chunk helpers ─────────────────────────────────────────────────────────────
+
+function chunkStart(i) {
+  return Math.floor(i / numWorkers * maxSeed);
+}
+
+function chunkEnd(i) {
+  return i === numWorkers - 1 ? maxSeed : Math.floor((i + 1) / numWorkers * maxSeed);
+}
+
 // ── Worker management ─────────────────────────────────────────────────────────
 
-function workerConfig() {
+function workerConfigFor(i) {
+  const ws = workerStates[i];
   return {
     requiredTypes,
     requiredEffects,
     requiredSecondEffectsAdjusted,
-    checked,
-    foundSeeds,
-    bestMinRarity,
-    bestMinRaritySeed,
-    bestMinRaritySeedRarities,
-    bestAverageRarity,
-    bestAverageRaritySeed,
-    bestAverageRaritySeedRarities,
-    bestMaxRarity,
-    bestMaxMinRarity,
-    bestMaxRaritySeed,
-    bestMaxRaritySeedRarities,
-    worstMaxRarity,
-    worstMaxRaritySeed,
-    worstMaxRaritySeedRarities,
+    workerMaxSeed: chunkEnd(i),
+    checked: ws ? ws.checked : chunkStart(i),
+    foundSeeds: ws ? ws.foundSeeds : 0,
+    bestMinRarity: ws ? ws.bestMinRarity : -1,
+    bestMinRaritySeed: ws ? ws.bestMinRaritySeed : -1,
+    bestMinRaritySeedRarities: ws ? ws.bestMinRaritySeedRarities : [],
+    bestAverageRarity: ws ? ws.bestAverageRarity : -1,
+    bestAverageRaritySeed: ws ? ws.bestAverageRaritySeed : -1,
+    bestAverageRaritySeedRarities: ws ? ws.bestAverageRaritySeedRarities : [],
+    bestMaxRarity: ws ? ws.bestMaxRarity : -1,
+    bestMaxMinRarity: ws ? ws.bestMaxMinRarity : -1,
+    bestMaxRaritySeed: ws ? ws.bestMaxRaritySeed : -1,
+    bestMaxRaritySeedRarities: ws ? ws.bestMaxRaritySeedRarities : [],
+    worstMaxRarity: ws ? ws.worstMaxRarity : 101,
+    worstMaxRaritySeed: ws ? ws.worstMaxRaritySeed : -1,
+    worstMaxRaritySeedRarities: ws ? ws.worstMaxRaritySeedRarities : [],
   };
 }
 
-function startWorker() {
-  worker = new Worker('js/glyph_seed_calculator_worker.js');
-  worker.onmessage = function(e) {
+function createWorker(i) {
+  const w = new Worker('js/glyph_seed_calculator_worker.js');
+  w.onmessage = function(e) {
     const { type, data } = e.data;
-    mirrorState(data);
-    updateUI(data.speed);
+    workerStates[i] = data;
+    mergeAndUpdateUI();
     if (type === 'done') {
-      worker = null;
-      started = false;
-      running = false;
-      pause_button.style.visibility = "hidden";
-      export_button.style.visibility = "visible";
-      export_button.innerHTML = "EXPORT";
+      workers[i] = null;
+      workerDone[i] = true;
+      if (workerDone.every(d => d)) {
+        started = false;
+        running = false;
+        pause_button.style.visibility = "hidden";
+        export_button.style.visibility = "visible";
+        export_button.innerHTML = "EXPORT";
+      }
     }
   };
-  worker.postMessage({ type: 'start', config: workerConfig() });
+  w.postMessage({ type: 'start', config: workerConfigFor(i) });
+  return w;
 }
 
-function mirrorState(data) {
-  checked = data.checked;
-  foundSeeds = data.foundSeeds;
-  if (data.foundSeeds > 0) {
-    bestMinRarity = data.bestMinRarity;
-    bestMinRaritySeed = data.bestMinRaritySeed;
-    bestMinRaritySeedRarities = data.bestMinRaritySeedRarities;
-    bestAverageRarity = data.bestAverageRarity;
-    bestAverageRaritySeed = data.bestAverageRaritySeed;
-    bestAverageRaritySeedRarities = data.bestAverageRaritySeedRarities;
-    bestMaxRarity = data.bestMaxRarity;
-    bestMaxMinRarity = data.bestMaxMinRarity;
-    bestMaxRaritySeed = data.bestMaxRaritySeed;
-    bestMaxRaritySeedRarities = data.bestMaxRaritySeedRarities;
-    worstMaxRarity = data.worstMaxRarity;
-    worstMaxRaritySeed = data.worstMaxRaritySeed;
-    worstMaxRaritySeedRarities = data.worstMaxRaritySeedRarities;
+function startAllWorkers() {
+  for (let i = 0; i < numWorkers; i++) {
+    workers[i] = createWorker(i);
   }
+}
+
+// ── State merging ─────────────────────────────────────────────────────────────
+
+function mergeAndUpdateUI() {
+  let totalChecked = 0;
+  let totalFoundSeeds = 0;
+  let totalSpeed = 0;
+  let mBestMinRarity = -1, mBestMinRaritySeed = -1, mBestMinRaritySeedRarities = [];
+  let mBestAverageRarity = -1, mBestAverageRaritySeed = -1, mBestAverageRaritySeedRarities = [];
+  let mBestMaxRarity = -1, mBestMaxMinRarity = -1, mBestMaxRaritySeed = -1, mBestMaxRaritySeedRarities = [];
+  let mWorstMaxRarity = 101, mWorstMaxRaritySeed = -1, mWorstMaxRaritySeedRarities = [];
+
+  for (let i = 0; i < numWorkers; i++) {
+    const ws = workerStates[i];
+    if (!ws) continue;
+
+    totalChecked += ws.checked - chunkStart(i);
+    totalFoundSeeds += ws.foundSeeds;
+    totalSpeed += parseFloat(ws.speed) || 0;
+
+    if (ws.foundSeeds > 0) {
+      if (ws.bestMinRarity > mBestMinRarity) {
+        mBestMinRarity = ws.bestMinRarity;
+        mBestMinRaritySeed = ws.bestMinRaritySeed;
+        mBestMinRaritySeedRarities = ws.bestMinRaritySeedRarities;
+      }
+      if (ws.bestAverageRarity > mBestAverageRarity) {
+        mBestAverageRarity = ws.bestAverageRarity;
+        mBestAverageRaritySeed = ws.bestAverageRaritySeed;
+        mBestAverageRaritySeedRarities = ws.bestAverageRaritySeedRarities;
+      }
+      if (ws.bestMaxRarity > mBestMaxRarity ||
+          (ws.bestMaxRarity === mBestMaxRarity && ws.bestMaxMinRarity > mBestMaxMinRarity)) {
+        mBestMaxRarity = ws.bestMaxRarity;
+        mBestMaxMinRarity = ws.bestMaxMinRarity;
+        mBestMaxRaritySeed = ws.bestMaxRaritySeed;
+        mBestMaxRaritySeedRarities = ws.bestMaxRaritySeedRarities;
+      }
+      if (ws.worstMaxRarity < mWorstMaxRarity) {
+        mWorstMaxRarity = ws.worstMaxRarity;
+        mWorstMaxRaritySeed = ws.worstMaxRaritySeed;
+        mWorstMaxRaritySeedRarities = ws.worstMaxRaritySeedRarities;
+      }
+    }
+  }
+
+  // Update global merged state (used by exportData)
+  checked = totalChecked;
+  foundSeeds = totalFoundSeeds;
+  bestMinRarity = mBestMinRarity;
+  bestMinRaritySeed = mBestMinRaritySeed;
+  bestMinRaritySeedRarities = mBestMinRaritySeedRarities;
+  bestAverageRarity = mBestAverageRarity;
+  bestAverageRaritySeed = mBestAverageRaritySeed;
+  bestAverageRaritySeedRarities = mBestAverageRaritySeedRarities;
+  bestMaxRarity = mBestMaxRarity;
+  bestMaxMinRarity = mBestMaxMinRarity;
+  bestMaxRaritySeed = mBestMaxRaritySeed;
+  bestMaxRaritySeedRarities = mBestMaxRaritySeedRarities;
+  worstMaxRarity = mWorstMaxRarity;
+  worstMaxRaritySeed = mWorstMaxRaritySeed;
+  worstMaxRaritySeedRarities = mWorstMaxRaritySeedRarities;
+
+  updateUI(totalSpeed.toFixed(2));
 }
 
 // ── UI ────────────────────────────────────────────────────────────────────────
@@ -101,7 +173,7 @@ function mirrorState(data) {
 function updateUI(speed) {
   let text = "Seeds simulated: " + checked + "/" + maxSeed + ", " +
     (100 * checked / maxSeed).toFixed(2) + "%<br>" +
-    "Simulation speed: " + speed + " seeds/s<br><br>";
+    "Simulation speed: " + speed + " seeds/s (" + numWorkers + " workers)<br><br>";
 
   if (foundSeeds > 0) {
     text += "Found seeds: " + foundSeeds + "<br><br>";
@@ -139,14 +211,29 @@ function pause() {
   running = !running;
   pause_button.innerHTML = running ? "PAUSE" : "RESUME";
   if (running) {
-    startWorker();
+    // Resume: restart only workers that haven't finished their range
+    for (let i = 0; i < numWorkers; i++) {
+      if (!workerDone[i]) {
+        workers[i] = createWorker(i);
+      }
+    }
   } else {
-    if (worker) { worker.terminate(); worker = null; }
+    // Pause: terminate all running workers
+    for (let i = 0; i < numWorkers; i++) {
+      if (workers[i]) {
+        workers[i].terminate();
+        workers[i] = null;
+      }
+    }
   }
 }
 
 function calculate() {
-  if (worker) { worker.terminate(); worker = null; }
+  for (let i = 0; i < numWorkers; i++) {
+    if (workers[i]) { workers[i].terminate(); workers[i] = null; }
+  }
+  workerStates = new Array(numWorkers).fill(null);
+  workerDone = new Array(numWorkers).fill(false);
 
   checked = 0;
   foundSeeds = 0;
@@ -165,7 +252,7 @@ function calculate() {
   worstMaxRaritySeedRarities = [];
 
   glyphs_textarea.innerHTML =
-    "Seeds simulated: 0/" + maxSeed + ", 0.00%<br>Simulation speed: 0.00 seeds/s";
+    "Seeds simulated: 0/" + maxSeed + ", 0.00%<br>Simulation speed: 0.00 seeds/s (" + numWorkers + " workers)";
 
   const glyphAmount = parseInt(glyph_amount_text.value);
   const startID = [16, 12, 8, 0, 4];
@@ -199,7 +286,7 @@ function calculate() {
     export_button.style.visibility = "hidden";
     pause_button.style.visibility = "visible";
     pause_button.innerHTML = "PAUSE";
-    startWorker();
+    startAllWorkers();
   }
 }
 

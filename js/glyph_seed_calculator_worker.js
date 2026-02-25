@@ -9,6 +9,7 @@ const GLYPH_EFFECTS_BY_TYPE = [
 
 const SECOND_GAUSSIAN_DEFAULT_VALUE = 1e6;
 const maxSeed = 4294967295;
+let workerMaxSeed = maxSeed;
 const REALITIES_BEFORE_REDRAW = 1000000;
 
 const factorials = [1, 1, 2, 6, 24, 120];
@@ -287,7 +288,7 @@ function step() {
   if (!running) return;
 
   const stepStart = Date.now();
-  const batchEnd = Math.min(checked + REALITIES_BEFORE_REDRAW, maxSeed);
+  const batchEnd = Math.min(checked + REALITIES_BEFORE_REDRAW, workerMaxSeed);
 
   const validInitSeeds = generateValidInitSeeds(
     requiredTypes, requiredSecondEffectsAdjusted, checked + 1, batchEnd
@@ -350,7 +351,7 @@ function step() {
   const elapsed = (Date.now() - stepStart) / 1000;
   const speed = (REALITIES_BEFORE_REDRAW / elapsed).toFixed(2);
 
-  if (checked >= maxSeed) {
+  if (checked >= workerMaxSeed) {
     running = false;
     postMessage({ type: 'done', data: buildProgressPayload(speed) });
   } else {
@@ -382,6 +383,7 @@ onmessage = function(e) {
   worstMaxRaritySeed = c.worstMaxRaritySeed;
   worstMaxRaritySeedRarities = c.worstMaxRaritySeedRarities;
 
+  workerMaxSeed = c.workerMaxSeed !== undefined ? c.workerMaxSeed : maxSeed;
   running = true;
   step();
 };
