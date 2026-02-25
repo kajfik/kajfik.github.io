@@ -10,7 +10,7 @@ const GLYPH_EFFECTS_BY_TYPE = [
 const SECOND_GAUSSIAN_DEFAULT_VALUE = 1e6;
 const maxSeed = 4294967295;
 let workerMaxSeed = maxSeed;
-const REALITIES_BEFORE_REDRAW = 1000000;
+const REALITIES_BEFORE_REDRAW = 10000000;
 
 const factorials = [1, 1, 2, 6, 24, 120];
 
@@ -73,6 +73,29 @@ for (let i = 0; i < 5; i++) {
   TYPES_WITHOUT_REMOVED.push([0, 1, 2, 3, 4].filter(t => t !== i));
 }
 
+// Start IDs for each glyph type (power=16, infinity=12, replication=8, time=0, dilation=4)
+const GLYPH_START_ID = [16, 12, 8, 0, 4];
+
+// ── Pre-allocated hot-path buffers ────────────────────────────────────────────
+// generateEffects: scores and index scratch (eliminates 2 allocations per call)
+const _efScores = new Float64Array(4);
+const _efIdx    = new Int32Array(4);
+
+// uniformGlyphs: reusable uniform-effect slots and glyph objects
+const _uniformEffects = new Int32Array(4);
+const _glyphs = [
+  { typeIdx: 0, strength: 0, level: 0, effects: 0 },
+  { typeIdx: 0, strength: 0, level: 0, effects: 0 },
+  { typeIdx: 0, strength: 0, level: 0, effects: 0 },
+  { typeIdx: 0, strength: 0, level: 0, effects: 0 },
+];
+
+// uniformGlyphs: scratch buffer for inline getBitIndexes+filter (max 4 bits per glyph)
+const _replaceable = new Int32Array(8);
+
+// step(): reusable rarities accumulator (sized for up to 256 required glyphs)
+const _rarities = new Float64Array(256);
+
 // ── RNG & glyph computation ───────────────────────────────────────────────────
 
 let seed = 0;
@@ -129,66 +152,65 @@ function generateEffects(typeIdx, count) {
   const s3 = uniform();
   uniform(); uniform(); uniform();
 
-  // Guaranteed effects (IDs 0, 12, 16) always win selection
-  const scores = [
-    (effectIDs[0] === 0 || effectIDs[0] === 12 || effectIDs[0] === 16) ? 2 : s0,
-    (effectIDs[1] === 0 || effectIDs[1] === 12 || effectIDs[1] === 16) ? 2 : s1,
-    (effectIDs[2] === 0 || effectIDs[2] === 12 || effectIDs[2] === 16) ? 2 : s2,
-    (effectIDs[3] === 0 || effectIDs[3] === 12 || effectIDs[3] === 16) ? 2 : s3,
-  ];
+  // Guaranteed effects (IDs 0, 12, 16) always win selection.
+  // Write into module-level typed arrays — no heap allocation.
+  _efScores[0] = (effectIDs[0] === 0 || effectIDs[0] === 12 || effectIDs[0] === 16) ? 2 : s0;
+  _efScores[1] = (effectIDs[1] === 0 || effectIDs[1] === 12 || effectIDs[1] === 16) ? 2 : s1;
+  _efScores[2] = (effectIDs[2] === 0 || effectIDs[2] === 12 || effectIDs[2] === 16) ? 2 : s2;
+  _efScores[3] = (effectIDs[3] === 0 || effectIDs[3] === 12 || effectIDs[3] === 16) ? 2 : s3;
+  _efIdx[0] = 0; _efIdx[1] = 1; _efIdx[2] = 2; _efIdx[3] = 3;
 
-  const sorted = [0, 1, 2, 3].sort((a, b) => scores[b] - scores[a]);
+  // Partial selection sort (descending): extract the top `count` indices.
+  // No sort callback, no temporary array — O(count * 4) comparisons for 4 elements.
   let result = 0;
   for (let i = 0; i < count; i++) {
-    result |= 1 << effectIDs[sorted[i]];
+    let best = i;
+    for (let j = i + 1; j < 4; j++) {
+      if (_efScores[_efIdx[j]] > _efScores[_efIdx[best]]) best = j;
+    }
+    const tmp = _efIdx[i]; _efIdx[i] = _efIdx[best]; _efIdx[best] = tmp;
+    result |= 1 << effectIDs[_efIdx[i]];
   }
   return result;
 }
 
-function getBitIndexes(num) {
-  const indexes = [];
-  let index = 0;
-  while (num > 0) {
-    if (num & 1) indexes.push(index);
-    num >>= 1;
-    index++;
-  }
-  return indexes;
-}
-
-function uniformGlyphs(level, realityCount) {
+// targetIdx:         index (0-3) of the glyph whose effects we need to match
+// requiredEffectMask: expected effects bitmask; returns null immediately if the
+//                    target glyph's final effects don't match (RNG state is then
+//                    undefined, but the caller will discard the seed anyway).
+function uniformGlyphs(level, realityCount, targetIdx, requiredEffectMask) {
   const groupIndex = (realityCount - 1) % 5;
   const permIndex = (initialSeed % 1123) % 120;
   const typePerm = permutations5[permIndex];
   const typePermIndex = PERM_TYPE_INDEX[permIndex][groupIndex];
-  const startID = [16, 12, 8, 0, 4];
   const effectMod = initialSeed % 11;
   const typesThisReality = TYPES_WITHOUT_REMOVED[typePerm[groupIndex]];
 
-  const uniformEffects = [0, 0, 0, 0];
+  // Fill pre-allocated uniform-effects buffer (no per-call array allocation)
   for (let i = 0; i < 4; i++) {
     const type = typesThisReality[i];
     const effectPerm = permutations4[(5 * type + effectMod) % 24];
-    uniformEffects[i] = startID[type] + effectPerm[typePermIndex[type]];
+    _uniformEffects[i] = GLYPH_START_ID[type] + effectPerm[typePermIndex[type]];
   }
 
-  const glyphs = [];
+  // Mutate pre-allocated glyph objects in-place (no per-call object/array allocation)
   for (let i = 0; i < 4; ++i) {
-    const strength = randomStrength(realityCount);
-    const typeIdx = typesThisReality[i];
+    const g = _glyphs[i];
+    g.strength = randomStrength(realityCount);
+    g.typeIdx = typesThisReality[i];
+    g.level = level;
     const random1 = uniform();
     uniform(); // random2 — advances RNG state, value unused
     const numEffects = Math.min(
       4,
-      Math.floor(Math.pow(random1, 1 - (Math.pow(level * strength, 0.5)) / 100) * 1.5 + 1)
+      Math.floor(Math.pow(random1, 1 - (Math.pow(level * g.strength, 0.5)) / 100) * 1.5 + 1)
     );
 
-    const effects = generateEffects(typeIdx, numEffects);
-    const newGlyph = { typeIdx, strength, level, effects };
+    g.effects = generateEffects(g.typeIdx, numEffects);
 
     const newMask = (initialSeed + realityCount + i) % 2 === 0
-      ? (1 << uniformEffects[i])
-      : newGlyph.effects | (1 << uniformEffects[i]);
+      ? (1 << _uniformEffects[i])
+      : g.effects | (1 << _uniformEffects[i]);
 
     // Popcount via bit-twiddling
     let b = newMask;
@@ -200,20 +222,40 @@ function uniformGlyphs(level, realityCount) {
     const count = b & 0x3f;
 
     if (count > 2) {
-      const replacable = getBitIndexes(newGlyph.effects)
-        .filter(eff => eff !== 0 && eff !== 12 && eff !== 16);
-      const toRemove = replacable[Math.abs(initialSeed + realityCount) % replacable.length];
-      newGlyph.effects = newMask & ~(1 << toRemove);
+      // Inline getBitIndexes(g.effects).filter(eff => eff !== 0 && eff !== 12 && eff !== 16)
+      // Uses module-level _replaceable buffer — no heap allocation, no .filter() closure.
+      let replLen = 0;
+      let tmp = g.effects;
+      let bitIdx = 0;
+      while (tmp > 0) {
+        if ((tmp & 1) && bitIdx !== 0 && bitIdx !== 12 && bitIdx !== 16) {
+          _replaceable[replLen++] = bitIdx;
+        }
+        tmp >>>= 1;
+        bitIdx++;
+      }
+      if (replLen === 0) {
+        // Edge case: matches original behavior where replacable[NaN] = undefined,
+        // 1 << undefined = 1, so bit 0 is cleared.
+        g.effects = newMask & ~1;
+      } else {
+        const toRemove = _replaceable[Math.abs(initialSeed + realityCount) % replLen];
+        g.effects = newMask & ~(1 << toRemove);
+      }
     } else {
-      newGlyph.effects = newMask;
+      g.effects = newMask;
     }
 
     // Ensure guaranteed effects per type
-    if (typeIdx === 0)      newGlyph.effects |= 1 << 16; // power
-    else if (typeIdx === 1) newGlyph.effects |= 1 << 12; // infinity
-    else if (typeIdx === 3) newGlyph.effects |= 1 << 0;  // time
+    const ti = g.typeIdx;
+    if (ti === 0)      g.effects |= 1 << 16; // power
+    else if (ti === 1) g.effects |= 1 << 12; // infinity
+    else if (ti === 3) g.effects |= 1 << 0;  // time
 
-    glyphs.push(newGlyph);
+    // Early exit: if this is the target glyph and effects don't match, the
+    // seed is invalid.  The caller will discard it, so the RNG state here
+    // doesn't matter — skipping the remaining glyphs is safe.
+    if (i === targetIdx && g.effects !== requiredEffectMask) return null;
   }
 
   const strengthThreshold = 1.5;
@@ -222,17 +264,39 @@ function uniformGlyphs(level, realityCount) {
   do {
     newStrength = randomStrength(realityCount);
   } while (newStrength < strengthThreshold);
-  if (glyphs.every(e => e.strength < strengthThreshold)) {
-    glyphs[Math.floor(random * glyphs.length)].strength = newStrength;
+  // Replace glyphs.every() + glyphs.length with a plain loop over the fixed-size buffer
+  let allBelowThreshold = true;
+  for (let k = 0; k < 4; k++) {
+    if (_glyphs[k].strength >= strengthThreshold) { allBelowThreshold = false; break; }
+  }
+  if (allBelowThreshold) {
+    _glyphs[Math.floor(random * 4)].strength = newStrength;
   }
 
-  return glyphs;
+  return _glyphs;
 }
 
-// Returns seeds in [minValue, maxValue] that pass the fast type/effect filter.
-function generateValidInitSeeds(types, effects, minValue, maxValue) {
-  const validSeeds = [];
-  for (let s = minValue; s <= maxValue; s++) {
+// ── CRT-based seed pre-filter ─────────────────────────────────────────────────
+//
+// The filter depends only on three independent modular residues of s:
+//   s % 1123  →  permIndex (= (s%1123)%120), typeIndex, typePermIdx
+//   s % 11    →  effectMod, effectPerm
+//   s % 2     →  the parity term in the uniform-effect slot check
+//
+// Because 1123 is prime and gcd(1123,11)=gcd(1123,2)=gcd(11,2)=1, the combined
+// period is lcm(1123, 11, 2) = 24706.  Any two seeds congruent mod 24706 produce
+// identical filter outcomes, so we precompute the valid offsets once per search
+// (precomputeValidOffsets) and then just jump to those offsets each batch
+// (generateValidInitSeeds) instead of testing every seed individually.
+
+const PERIOD = 24706; // lcm(1123, 11, 2)
+let validOffsets = []; // set once per search by precomputeValidOffsets()
+
+// Runs the filter logic over [0, PERIOD) and returns the sorted list of offsets
+// that pass all checks for the given types/effects configuration.
+function precomputeValidOffsets(types, effects) {
+  const offsets = [];
+  for (let s = 0; s < PERIOD; s++) {
     const permIndex = (s % 1123) % 120;
     const perm = permutations5[permIndex];
     const effectMod = s % 11;
@@ -255,7 +319,21 @@ function generateValidInitSeeds(types, effects, minValue, maxValue) {
       if (effects[r] !== effectPerm[typePermIdx]) { isValid = false; break; }
     }
 
-    if (isValid) validSeeds.push(s);
+    if (isValid) offsets.push(s);
+  }
+  return offsets;
+}
+
+// Returns seeds in [minValue, maxValue] that pass the pre-filter by jumping
+// directly to the precomputed valid offsets within each period.
+function generateValidInitSeeds(minValue, maxValue) {
+  const validSeeds = [];
+  const baseStart = Math.floor(minValue / PERIOD) * PERIOD;
+  for (let base = baseStart; base <= maxValue; base += PERIOD) {
+    for (let j = 0; j < validOffsets.length; j++) {
+      const s = base + validOffsets[j];
+      if (s >= minValue && s <= maxValue) validSeeds.push(s);
+    }
   }
   return validSeeds;
 }
@@ -290,59 +368,64 @@ function step() {
   const stepStart = Date.now();
   const batchEnd = Math.min(checked + REALITIES_BEFORE_REDRAW, workerMaxSeed);
 
-  const validInitSeeds = generateValidInitSeeds(
-    requiredTypes, requiredSecondEffectsAdjusted, checked + 1, batchEnd
-  );
+  const validInitSeeds = generateValidInitSeeds(checked + 1, batchEnd);
 
+  const nRequired = requiredEffects.length;
   for (let v = 0; v < validInitSeeds.length; v++) {
     initialSeed = validInitSeeds[v];
     seed = initialSeed;
     secondGaussian = SECOND_GAUSSIAN_DEFAULT_VALUE;
 
     let found = true;
-    const rarities = [];
+    let raritiesLen = 0;
     const permIndex = (initialSeed % 1123) % 120;
 
-    for (let i = 1; i <= requiredEffects.length; i++) {
-      const glyphs = uniformGlyphs(1, i);
+    for (let i = 1; i <= nRequired; i++) {
       const groupIndex = (i - 1) % 5;
       const removedTypeIdx = permutations5[permIndex][groupIndex];
       const typeInRealityIdx = TYPE_INDEX_LOOKUP[removedTypeIdx][requiredTypes[i - 1]];
-      const glyph = glyphs[typeInRealityIdx];
-
-      if (glyph === undefined || glyph.effects !== requiredEffects[i - 1]) {
-        found = false;
-        break;
-      }
-      rarities.push(strengthToRarity(glyph.strength));
+      const glyphs = uniformGlyphs(1, i, typeInRealityIdx, requiredEffects[i - 1]);
+      if (glyphs === null) { found = false; break; }
+      _rarities[raritiesLen++] = strengthToRarity(glyphs[typeInRealityIdx].strength);
     }
 
     if (found) {
       foundSeeds++;
-      const minRarity = Math.min(...rarities);
-      const avgRarity = rarities.reduce((p, c, _, a) => p + c / a.length, 0);
-      const maxRarity = Math.max(...rarities);
+      // Manual min/max/sum — no spread, no reduce, no temporary arrays.
+      let minRarity, maxRarity, sumRarity;
+      if (raritiesLen === 0) {
+        minRarity = Infinity; maxRarity = -Infinity; sumRarity = 0;
+      } else {
+        minRarity = _rarities[0]; maxRarity = _rarities[0]; sumRarity = _rarities[0];
+        for (let ri = 1; ri < raritiesLen; ri++) {
+          const r = _rarities[ri];
+          if (r < minRarity) minRarity = r;
+          if (r > maxRarity) maxRarity = r;
+          sumRarity += r;
+        }
+      }
+      const avgRarity = raritiesLen > 0 ? sumRarity / raritiesLen : 0;
 
       if (minRarity > bestMinRarity) {
         bestMinRarity = minRarity;
         bestMinRaritySeed = initialSeed;
-        bestMinRaritySeedRarities = rarities.slice();
+        bestMinRaritySeedRarities = Array.from(_rarities.subarray(0, raritiesLen));
       }
       if (avgRarity > bestAverageRarity) {
         bestAverageRarity = avgRarity;
         bestAverageRaritySeed = initialSeed;
-        bestAverageRaritySeedRarities = rarities.slice();
+        bestAverageRaritySeedRarities = Array.from(_rarities.subarray(0, raritiesLen));
       }
       if (maxRarity > bestMaxRarity || (maxRarity >= bestMaxRarity && minRarity > bestMaxMinRarity)) {
         bestMaxRarity = maxRarity;
         bestMaxMinRarity = minRarity;
         bestMaxRaritySeed = initialSeed;
-        bestMaxRaritySeedRarities = rarities.slice();
+        bestMaxRaritySeedRarities = Array.from(_rarities.subarray(0, raritiesLen));
       }
       if (maxRarity < worstMaxRarity) {
         worstMaxRarity = maxRarity;
         worstMaxRaritySeed = initialSeed;
-        worstMaxRaritySeedRarities = rarities.slice();
+        worstMaxRaritySeedRarities = Array.from(_rarities.subarray(0, raritiesLen));
       }
     }
   }
@@ -384,6 +467,7 @@ onmessage = function(e) {
   worstMaxRaritySeedRarities = c.worstMaxRaritySeedRarities;
 
   workerMaxSeed = c.workerMaxSeed !== undefined ? c.workerMaxSeed : maxSeed;
+  validOffsets = precomputeValidOffsets(requiredTypes, requiredSecondEffectsAdjusted);
   running = true;
   step();
 };
